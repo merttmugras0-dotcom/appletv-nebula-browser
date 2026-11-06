@@ -7,23 +7,59 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: macos-26
+
     steps:
-      - name: Get source code
-        uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v5
 
-      - name: Show Xcode version
-        run: xcodebuild -version
-
-      - name: Find Xcode projects
+      - name: Build unsigned tvOS app
         run: |
-          find . \( -name "*.xcodeproj" -o -name "*.xcworkspace" \) -print
-          
-      - name: List Xcode schemes and targets
-        run: |
-          xcodebuild -list -project "_Project/Browser.xcodeproj"
-          echo "---- Shared schemes ----"
-          find "_Project/Browser.xcodeproj" -type f -name "*.xcscheme" -print
+          set -euo pipefail
 
+          xcodebuild \
+            -project "_Project/Browser.xcodeproj" \
+            -scheme "Browser" \
+            -configuration Release \
+            -sdk appletvos \
+            -destination 'generic/platform=tvOS' \
+            -derivedDataPath "$RUNNER_TEMP/NebulaDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$(find "$RUNNER_TEMP/NebulaDerivedData/Build/Products" -type d -name "Browser.app" -print -quit)"
+
+          if [[ -z "$APP_PATH" ]]; then
+            echo "::error::Browser.app was not found"
+            find "$RUNNER_TEMP/NebulaDerivedData/Build/Products" -maxdepth 4 -print || true
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+
+          ditto "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/Browser.app"
+
+          (
+            cd "$RUNNER_TEMP/ipa"
+            /usr/bin/zip -qry -y "$GITHUB_WORKSPACE/NebulaBrowser-unsigned.ipa" Payload
+          )
+
+          ls -lh "$GITHUB_WORKSPACE/NebulaBrowser-unsigned.ipa"
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: NebulaBrowser-unsigned-IPA
+          path: NebulaBrowser-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
