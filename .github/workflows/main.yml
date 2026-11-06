@@ -20,3 +20,10 @@ jobs:
       - name: Find Xcode projects
         run: |
           find . \( -name "*.xcodeproj" -o -name "*.xcworkspace" \) -print
+          
+      - name: List Xcode schemes and targets
+        run: |
+          xcodebuild -list -project "_Project/Browser.xcodeproj"
+          echo "---- Shared schemes ----"
+          find "_Project/Browser.xcodeproj" -type f -name "*.xcscheme" -print
+
